@@ -50,17 +50,27 @@ export default function Room({ params }: { params: { id: string } }) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
 
+  // Validate room on mount
   useEffect(() => {
-    if (!roomId || roomId.length !== 6) {
-      setError("Invalid room ID")
-      setLoading(false)
-      return
+    const validateRoom = async () => {
+      try {
+        const response = await fetch(`/api/room/${roomId}`)
+        if (!response.ok) {
+          throw new Error('Invalid room')
+        }
+        setLoading(false)
+      } catch (err) {
+        setError('Invalid room ID or room not found')
+        setLoading(false)
+      }
     }
 
-    if (!username) {
-      router.push('/')
-      return
-    }
+    validateRoom()
+  }, [roomId])
+
+  // WebSocket connection effect
+  useEffect(() => {
+    if (error || loading) return
 
     let ws: WebSocket | null = null
     let reconnectTimeout: NodeJS.Timeout | null = null
@@ -219,7 +229,7 @@ export default function Room({ params }: { params: { id: string } }) {
         ws.close()
       }
     }
-  }, [roomId, username, isHost, toast, router])
+  }, [roomId, username, isHost, toast, router, error, loading])
 
   useEffect(() => {
     // Scroll to bottom when messages change
