@@ -9,26 +9,12 @@
 [functions]
   node_bundler = "esbuild"
 
-[[redirects]]
-  from = "/*"
-  to = "/.netlify/functions/next_server"
-  status = 200
-
-[dev]
-  framework = "next"
-  targetPort = 3000
-
-[build.environment]
-  NEXT_USE_NETLIFY_EDGE = "true"
-  NODE_VERSION = "18"
-  NPM_VERSION = "9"
-
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# Handle Socket.IO routes first
+# Handle WebSocket connections
 [[redirects]]
-  from = "/socket.io/*"
+  from = "/.netlify/edge-functions/socketio"
   to = "/.netlify/edge-functions/socketio"
   status = 200
   force = true
@@ -38,19 +24,23 @@
   from = "/_next/static/*"
   to = "/_next/static/:splat"
   status = 200
-  force = true
-  conditions = {Path = "/_next/static/**"}
+
+# Handle Next.js data files
+[[redirects]]
+  from = "/_next/data/*"
+  to = "/_next/data/:splat"
+  status = 200
 
 # Handle API routes
 [[redirects]]
   from = "/api/*"
-  to = "/.netlify/functions/:splat"
+  to = "/.netlify/functions/api/:splat"
   status = 200
 
-# Handle client-side routing
+# Handle all other routes through Next.js
 [[redirects]]
   from = "/*"
-  to = "/index.html"
+  to = "/.netlify/functions/next_server"
   status = 200
 
 [[headers]]
@@ -68,4 +58,14 @@
     Content-Type = "text/plain"
     Upgrade = "websocket"
     Connection = "Upgrade"
-    Sec-WebSocket-Version = "13" 
+    Sec-WebSocket-Version = "13"
+    Sec-WebSocket-Protocol = "websocket"
+
+[dev]
+  framework = "next"
+  targetPort = 3000
+
+[build.environment]
+  NEXT_USE_NETLIFY_EDGE = "true"
+  NODE_VERSION = "18"
+  NPM_VERSION = "9" 
