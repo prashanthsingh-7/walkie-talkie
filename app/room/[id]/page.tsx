@@ -67,26 +67,41 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
       console.log('Connecting to WebSocket:', wsUrl.toString())
 
       try {
-        ws = new WebSocket(wsUrl.toString())
-
+        ws = new WebSocket(wsUrl.toString(), ['websocket'])
+        
+        // Add required WebSocket headers
         ws.onopen = () => {
           console.log('WebSocket connected')
           setConnected(true)
           reconnectAttempts = 0
+
+          // Send a ping every 30 seconds to keep the connection alive
+          const pingInterval = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'ping' }))
+            }
+          }, 30000)
+
           toast({
             title: "Connected to room",
             description: `You've joined room ${roomId}`,
           })
+
+          return () => clearInterval(pingInterval)
         }
 
         ws.onclose = (event) => {
           console.log('WebSocket closed:', event)
           setConnected(false)
-          toast({
-            title: "Disconnected",
-            description: "You've been disconnected from the room",
-            variant: "destructive",
-          })
+          
+          // Only show toast if we were previously connected
+          if (connected) {
+            toast({
+              title: "Disconnected",
+              description: "You've been disconnected from the room",
+              variant: "destructive",
+            })
+          }
 
           // Try to reconnect if we haven't exceeded max attempts
           if (reconnectAttempts < maxReconnectAttempts) {
@@ -94,17 +109,30 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
             const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 10000)
             console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`)
             reconnectTimeout = setTimeout(connect, delay)
+          } else {
+            toast({
+              title: "Connection Failed",
+              description: "Maximum reconnection attempts reached. Please refresh the page.",
+              variant: "destructive",
+            })
           }
         }
 
         ws.onerror = (error) => {
           console.error('WebSocket error:', error)
+          // Let onclose handle the reconnection
         }
 
         ws.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data)
             console.log('Received message:', message)
+
+            // Handle pong response
+            if (message.type === 'pong') {
+              return
+            }
+
             switch (message.type) {
               case 'message':
                 setMessages(prev => [...prev, message.data])
@@ -165,7 +193,7 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
         ws.close()
       }
     }
-  }, [roomId, username, isHost, toast])
+  }, [roomId, username, isHost, toast, connected])
 
   useEffect(() => {
     // Scroll to bottom when messages change

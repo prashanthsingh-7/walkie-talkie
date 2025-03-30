@@ -12,9 +12,32 @@ interface User {
 }
 
 export default async (request: Request, context: Context) => {
+  // Add CORS headers
+  const headers = new Headers({
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  })
+
+  // Handle preflight requests
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { headers })
+  }
+
   // Check if it's a WebSocket request
-  if (request.headers.get("Upgrade") !== "websocket") {
-    return new Response("Expected WebSocket", { status: 426 })
+  const upgrade = request.headers.get('Upgrade')
+  const connection = request.headers.get('Connection')
+  const secWebSocketKey = request.headers.get('Sec-WebSocket-Key')
+  const secWebSocketVersion = request.headers.get('Sec-WebSocket-Version')
+
+  if (!upgrade || !connection?.includes('Upgrade') || !secWebSocketKey || upgrade.toLowerCase() !== 'websocket') {
+    return new Response('Expected WebSocket', { 
+      status: 426,
+      headers: {
+        ...headers,
+        'Upgrade': 'WebSocket'
+      }
+    })
   }
 
   const url = new URL(request.url)
@@ -23,7 +46,7 @@ export default async (request: Request, context: Context) => {
   const isHost = url.searchParams.get('isHost') === 'true'
 
   if (!roomId || !username) {
-    return new Response('Missing roomId or username', { status: 400 })
+    return new Response('Missing roomId or username', { status: 400, headers })
   }
 
   // Initialize room if it doesn't exist
@@ -35,39 +58,39 @@ export default async (request: Request, context: Context) => {
   const roomUsers = rooms.get(roomId)
 
   try {
-    const webSocketPair = new WebSocketPair()
-    const [client, server] = Object.values(webSocketPair)
+    const { socket, response } = context.websocket
+    if (!socket || !response) {
+      throw new Error('WebSocket creation failed')
+    }
 
     const user: User = {
       id: crypto.randomUUID(),
       username,
       isHost,
-      socket: server
+      socket
     }
 
-    server.accept()
+    // Add user to room
+    roomUsers.add(user)
 
     // Send initial state
-    server.send(JSON.stringify({
+    socket.send(JSON.stringify({
       type: 'users',
       data: Array.from(roomUsers).map(({ id, username, isHost }) => ({ id, username, isHost }))
     }))
 
-    server.send(JSON.stringify({
+    socket.send(JSON.stringify({
       type: 'messages',
       data: messages.get(roomId)
     }))
-
-    // Add user to room
-    roomUsers.add(user)
 
     // Notify others
     broadcastToRoom(roomId, {
       type: 'user-joined',
       data: { id: user.id, username: user.username, isHost: user.isHost }
-    }, server)
+    }, socket)
 
-    server.addEventListener('message', async (event) => {
+    socket.addEventListener('message', async (event) => {
       try {
         const message = JSON.parse(event.data)
         switch (message.type) {
@@ -88,7 +111,7 @@ export default async (request: Request, context: Context) => {
             broadcastToRoom(roomId, {
               type: 'typing',
               data: username
-            }, server)
+            }, socket)
             break
         }
       } catch (error) {
@@ -96,7 +119,7 @@ export default async (request: Request, context: Context) => {
       }
     })
 
-    server.addEventListener('close', () => {
+    socket.addEventListener('close', () => {
       roomUsers.delete(user)
       broadcastToRoom(roomId, {
         type: 'user-left',
@@ -109,13 +132,10 @@ export default async (request: Request, context: Context) => {
       }
     })
 
-    return new Response(null, {
-      status: 101,
-      webSocket: client,
-    })
+    return response
   } catch (err) {
     console.error('WebSocket creation failed:', err)
-    return new Response('WebSocket creation failed', { status: 500 })
+    return new Response('WebSocket creation failed', { status: 500, headers })
   }
 }
 
