@@ -54,87 +54,105 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
     const maxReconnectAttempts = 5
 
     const connect = () => {
-      const wsUrl = new URL("/.netlify/edge-functions/socketio", process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001")
+      if (ws) {
+        ws.close()
+      }
+
+      const wsUrl = new URL("/.netlify/edge-functions/socketio", process.env.NEXT_PUBLIC_SOCKET_URL)
       wsUrl.protocol = wsUrl.protocol.replace('http', 'ws')
       wsUrl.searchParams.set('roomId', roomId)
       wsUrl.searchParams.set('username', username)
       wsUrl.searchParams.set('isHost', isHost ? 'true' : 'false')
 
-      ws = new WebSocket(wsUrl.toString())
+      console.log('Connecting to WebSocket:', wsUrl.toString())
 
-      ws.onopen = () => {
-        setConnected(true)
-        reconnectAttempts = 0
-        toast({
-          title: "Connected to room",
-          description: `You've joined room ${roomId}`,
-        })
-      }
+      try {
+        ws = new WebSocket(wsUrl.toString())
 
-      ws.onclose = () => {
-        setConnected(false)
+        ws.onopen = () => {
+          console.log('WebSocket connected')
+          setConnected(true)
+          reconnectAttempts = 0
+          toast({
+            title: "Connected to room",
+            description: `You've joined room ${roomId}`,
+          })
+        }
+
+        ws.onclose = (event) => {
+          console.log('WebSocket closed:', event)
+          setConnected(false)
+          toast({
+            title: "Disconnected",
+            description: "You've been disconnected from the room",
+            variant: "destructive",
+          })
+
+          // Try to reconnect if we haven't exceeded max attempts
+          if (reconnectAttempts < maxReconnectAttempts) {
+            reconnectAttempts++
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 10000)
+            console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`)
+            reconnectTimeout = setTimeout(connect, delay)
+          }
+        }
+
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error)
+        }
+
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data)
+            console.log('Received message:', message)
+            switch (message.type) {
+              case 'message':
+                setMessages(prev => [...prev, message.data])
+                break
+              case 'messages':
+                setMessages(message.data || [])
+                break
+              case 'users':
+                setUsers(message.data || [])
+                break
+              case 'user-joined':
+                setUsers(prev => [...prev, message.data])
+                toast({
+                  title: "User joined",
+                  description: `${message.data.username} has joined the room`,
+                })
+                break
+              case 'user-left':
+                setUsers(prev => prev.filter(user => user.id !== message.data.id))
+                toast({
+                  title: "User left",
+                  description: `${message.data.username} has left the room`,
+                  variant: "destructive",
+                })
+                break
+              case 'typing':
+                if (message.data !== username) {
+                  setIsTyping(true)
+                  if (typingTimeout) clearTimeout(typingTimeout)
+                  const timeout = setTimeout(() => setIsTyping(false), 3000)
+                  setTypingTimeout(timeout)
+                }
+                break
+            }
+          } catch (error) {
+            console.error('Error processing message:', error)
+          }
+        }
+
+        setSocket(ws)
+      } catch (error) {
+        console.error('Error creating WebSocket:', error)
         toast({
-          title: "Disconnected",
-          description: "You've been disconnected from the room",
+          title: "Connection Error",
+          description: "Failed to connect to the chat room",
           variant: "destructive",
         })
-
-        // Try to reconnect if we haven't exceeded max attempts
-        if (reconnectAttempts < maxReconnectAttempts) {
-          reconnectAttempts++
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 10000)
-          reconnectTimeout = setTimeout(connect, delay)
-        }
       }
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error)
-        ws?.close()
-      }
-
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data)
-          switch (message.type) {
-            case 'message':
-              setMessages(prev => [...prev, message.data])
-              break
-            case 'messages':
-              setMessages(message.data)
-              break
-            case 'users':
-              setUsers(message.data)
-              break
-            case 'user-joined':
-              setUsers(prev => [...prev, message.data])
-              toast({
-                title: "User joined",
-                description: `${message.data.username} has joined the room`,
-              })
-              break
-            case 'user-left':
-              setUsers(prev => prev.filter(user => user.id !== message.data.id))
-              toast({
-                title: "User left",
-                description: `${message.data.username} has left the room`,
-                variant: "destructive",
-              })
-              break
-            case 'typing':
-              if (message.data !== username) {
-                setIsTyping(true)
-                if (typingTimeout) clearTimeout(typingTimeout)
-                const timeout = setTimeout(() => setIsTyping(false), 3000)
-                setTypingTimeout(timeout)
-              }
-              break
-          }
-        } catch (error) {
-          console.error('Error processing message:', error)
-        }
-      }
-
-      setSocket(ws)
     }
 
     connect()
