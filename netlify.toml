@@ -1,5 +1,5 @@
 [build]
-  command = "npm run build"
+  command = "npm run netlify-build"
   publish = ".next"
 
 [[edge_functions]]
