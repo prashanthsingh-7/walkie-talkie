@@ -27,12 +27,11 @@ interface User {
   isHost: boolean
 }
 
-export default function Room({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = React.use(params)
+export default function Room({ params }: { params: { id: string } }) {
   const searchParams = useSearchParams()
   const username = searchParams.get("username") || "Anonymous"
   const isHost = searchParams.get("host") === "true"
-  const roomId = resolvedParams.id
+  const roomId = params.id
 
   const [socket, setSocket] = useState<WebSocket | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -59,7 +58,7 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
         ws.close()
       }
 
-      const wsUrl = new URL("/.netlify/edge-functions/socketio", process.env.NEXT_PUBLIC_SOCKET_URL)
+      const wsUrl = new URL("/.netlify/edge-functions/socketio", window.location.origin)
       wsUrl.protocol = wsUrl.protocol.replace('http', 'ws')
       wsUrl.searchParams.set('roomId', roomId)
       wsUrl.searchParams.set('username', username)
