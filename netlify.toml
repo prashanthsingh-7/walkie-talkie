@@ -11,23 +11,24 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+# Handle Socket.IO routes first
+[[redirects]]
+  from = "/socket.io/*"
+  to = "/.netlify/functions/socketio-handler"
+  status = 200
+  force = true
+
 # Handle Next.js static files
 [[redirects]]
   from = "/_next/static/*"
   to = "/_next/static/:splat"
   status = 200
 
-# Handle API and Socket.IO routes
+# Handle API routes
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200
-
-[[redirects]]
-  from = "/socket.io/*"
-  to = "/.netlify/functions/socketio-handler"
-  status = 200
-  force = true
 
 # Handle client-side routing
 [[redirects]]
@@ -40,5 +41,6 @@
   [headers.values]
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Methods = "GET, POST, OPTIONS"
-    Access-Control-Allow-Headers = "X-Requested-With, Content-Type, Authorization"
-    Access-Control-Allow-Credentials = "true" 
+    Access-Control-Allow-Headers = "X-Requested-With, Content-Type, Authorization, Sec-WebSocket-Key, Sec-WebSocket-Version, Sec-WebSocket-Protocol"
+    Access-Control-Allow-Credentials = "true"
+    Sec-WebSocket-Protocol = "socket.io" 
