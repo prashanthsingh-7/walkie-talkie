@@ -3,11 +3,29 @@
   publish = ".next"
 
 [[edge_functions]]
-  path = "/socket.io/*"
+  path = "/socketio"
   function = "socketio"
 
+[functions]
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/.netlify/edge-functions/socketio"
+  to = "/socketio"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/next_server"
+  status = 200
+
+[dev]
+  framework = "next"
+  targetPort = 3000
+
 [build.environment]
-  NEXT_PUBLIC_SOCKET_URL = "https://walky-talky.netlify.app"
+  NEXT_USE_NETLIFY_EDGE = "true"
   NODE_VERSION = "18"
   NPM_VERSION = "9"
 

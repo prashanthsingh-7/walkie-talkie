@@ -50,6 +50,7 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
   useEffect(() => {
     let ws: WebSocket | null = null
     let reconnectTimeout: NodeJS.Timeout | null = null
+    let pingInterval: NodeJS.Timeout | null = null
     let reconnectAttempts = 0
     const maxReconnectAttempts = 5
 
@@ -67,16 +68,18 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
       console.log('Connecting to WebSocket:', wsUrl.toString())
 
       try {
-        ws = new WebSocket(wsUrl.toString(), ['websocket'])
-        
-        // Add required WebSocket headers
+        ws = new WebSocket(wsUrl.toString())
+
         ws.onopen = () => {
           console.log('WebSocket connected')
           setConnected(true)
           reconnectAttempts = 0
 
           // Send a ping every 30 seconds to keep the connection alive
-          const pingInterval = setInterval(() => {
+          if (pingInterval) {
+            clearInterval(pingInterval)
+          }
+          pingInterval = setInterval(() => {
             if (ws && ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: 'ping' }))
             }
@@ -86,14 +89,16 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
             title: "Connected to room",
             description: `You've joined room ${roomId}`,
           })
-
-          return () => clearInterval(pingInterval)
         }
 
         ws.onclose = (event) => {
           console.log('WebSocket closed:', event)
           setConnected(false)
           
+          if (pingInterval) {
+            clearInterval(pingInterval)
+          }
+
           // Only show toast if we were previously connected
           if (connected) {
             toast({
@@ -120,7 +125,7 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
 
         ws.onerror = (error) => {
           console.error('WebSocket error:', error)
-          // Let onclose handle the reconnection
+          // Don't close here, let onclose handle reconnection
         }
 
         ws.onmessage = (event) => {
@@ -188,6 +193,9 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
     return () => {
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout)
+      }
+      if (pingInterval) {
+        clearInterval(pingInterval)
       }
       if (ws) {
         ws.close()
