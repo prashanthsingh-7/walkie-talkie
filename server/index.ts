@@ -2,6 +2,7 @@ import { Server } from "socket.io"
 import { createServer } from "http"
 import express from "express"
 import cors from "cors"
+import { NextApiRequest, NextApiResponse } from "next"
 
 const app = express()
 app.use(cors())
@@ -13,6 +14,8 @@ const io = new Server(httpServer, {
     methods: ["GET", "POST"],
   },
   path: "/socket.io/",
+  addTrailingSlash: false,
+  transports: ["websocket", "polling"],
 })
 
 interface User {
@@ -29,10 +32,13 @@ interface Message {
   timestamp: number
 }
 
+// In-memory storage (note: this will reset on serverless function cold starts)
 const rooms = new Map<string, Set<User>>()
 const messages = new Map<string, Message[]>()
 
 io.on("connection", (socket) => {
+  console.log("New client connected")
+  
   const { roomId, username, isHost } = socket.handshake.query
 
   if (!roomId || typeof roomId !== "string" || !username || typeof username !== "string") {
@@ -48,6 +54,7 @@ io.on("connection", (socket) => {
 
   // Join room
   socket.join(roomId)
+  console.log(`User ${username} joined room ${roomId}`)
 
   // Initialize room if it doesn't exist
   if (!rooms.has(roomId)) {
@@ -70,6 +77,8 @@ io.on("connection", (socket) => {
 
   // Handle new messages
   socket.on("send-message", (message: Omit<Message, "id">) => {
+    console.log(`New message in room ${roomId}: ${message.content}`)
+    
     const newMessage: Message = {
       ...message,
       id: Math.random().toString(36).substring(7),
@@ -89,6 +98,8 @@ io.on("connection", (socket) => {
 
   // Handle disconnection
   socket.on("disconnect", () => {
+    console.log(`User ${username} disconnected from room ${roomId}`)
+    
     const roomUsers = rooms.get(roomId)
     if (roomUsers) {
       const user = Array.from(roomUsers).find((u) => u.id === socket.id)
@@ -107,6 +118,11 @@ io.on("connection", (socket) => {
   })
 })
 
+// Health check endpoint
+app.get("/", (_req, res) => {
+  res.send("Socket.IO server is running")
+})
+
 // For local development
 if (process.env.NODE_ENV !== "production") {
   const PORT = process.env.PORT || 3001
@@ -115,5 +131,5 @@ if (process.env.NODE_ENV !== "production") {
   })
 }
 
-// For Vercel deployment
+// For Vercel serverless deployment
 export default app 
