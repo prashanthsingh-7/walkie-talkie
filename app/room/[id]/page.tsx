@@ -1,9 +1,8 @@
 "use client"
 
 import React from "react"
-
 import { useEffect, useState, useRef } from "react"
-import { useSearchParams, useRouter } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ArrowLeft, Send, ImageIcon, Users, X, Radio } from "lucide-react"
@@ -28,14 +27,10 @@ interface User {
 }
 
 export default function Room({ params }: { params: { id: string } }) {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const username = searchParams.get("username") || "Anonymous"
   const isHost = searchParams.get("host") === "true"
   const roomId = params.id
-
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
   const [socket, setSocket] = useState<WebSocket | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -50,28 +45,7 @@ export default function Room({ params }: { params: { id: string } }) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
 
-  // Validate room on mount
   useEffect(() => {
-    const validateRoom = async () => {
-      try {
-        const response = await fetch(`/api/room/${roomId}`)
-        if (!response.ok) {
-          throw new Error('Invalid room')
-        }
-        setLoading(false)
-      } catch (err) {
-        setError('Invalid room ID or room not found')
-        setLoading(false)
-      }
-    }
-
-    validateRoom()
-  }, [roomId])
-
-  // WebSocket connection effect
-  useEffect(() => {
-    if (error || loading) return
-
     let ws: WebSocket | null = null
     let reconnectTimeout: NodeJS.Timeout | null = null
     let pingInterval: NodeJS.Timeout | null = null
@@ -97,8 +71,6 @@ export default function Room({ params }: { params: { id: string } }) {
         ws.onopen = () => {
           console.log('WebSocket connected')
           setConnected(true)
-          setLoading(false)
-          setError(null)
           reconnectAttempts = 0
 
           // Send a ping every 30 seconds to keep the connection alive
@@ -206,8 +178,6 @@ export default function Room({ params }: { params: { id: string } }) {
         setSocket(ws)
       } catch (error) {
         console.error('Error creating WebSocket:', error)
-        setError("Failed to connect to the chat room")
-        setLoading(false)
         toast({
           title: "Connection Error",
           description: "Failed to connect to the chat room",
@@ -229,7 +199,7 @@ export default function Room({ params }: { params: { id: string } }) {
         ws.close()
       }
     }
-  }, [roomId, username, isHost, toast, router, error, loading])
+  }, [roomId, username, isHost, toast, connected])
 
   useEffect(() => {
     // Scroll to bottom when messages change
@@ -299,32 +269,6 @@ export default function Room({ params }: { params: { id: string } }) {
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-500/10 via-fuchsia-400/10 to-cyan-500/10">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-lg text-muted-foreground">Connecting to room...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-500/10 via-fuchsia-400/10 to-cyan-500/10">
-        <div className="text-center max-w-md mx-auto px-4">
-          <div className="text-red-500 text-6xl mb-4">⚠️</div>
-          <h1 className="text-2xl font-bold text-red-500 mb-2">Error</h1>
-          <p className="text-muted-foreground mb-4">{error}</p>
-          <Button onClick={() => router.push('/')} variant="default">
-            Go Back Home
-          </Button>
-        </div>
-      </div>
-    )
   }
 
   return (
