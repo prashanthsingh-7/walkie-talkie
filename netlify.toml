@@ -1,0 +1,38 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NEXT_PUBLIC_SOCKET_URL = "https://your-socket-server.netlify.app"
+  NODE_VERSION = "18"
+  NPM_VERSION = "9"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[[redirects]]
+  from = "/*"
+  to = "/_next/static/:splat"
+  status = 200
+  force = true
+  conditions = {Path = "/_next/static/**"}
+
+[[redirects]]
+  from = "/*"
+  to = "/api/:splat"
+  status = 200
+  force = true
+  conditions = {Path = "/api/**"}
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/socket.io/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+    Access-Control-Allow-Headers = "X-Requested-With, Content-Type, Authorization"
+    Access-Control-Allow-Credentials = "true" 
