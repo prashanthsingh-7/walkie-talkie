@@ -14,6 +14,14 @@ const nextConfig = {
     parallelServerBuildTraces: true,
     parallelServerCompiles: true,
   },
+  async rewrites() {
+    return [
+      {
+        source: '/room/:id',
+        destination: '/room/:id',
+      },
+    ]
+  },
 }
 
 export default nextConfig
