@@ -1,7 +1,10 @@
 [build]
   command = "npm run build"
   publish = ".next"
-  functions = "netlify/functions"
+
+[[edge_functions]]
+  path = "/socket.io/*"
+  function = "socketio"
 
 [build.environment]
   NEXT_PUBLIC_SOCKET_URL = "https://walky-talky.netlify.app"
@@ -14,7 +17,7 @@
 # Handle Socket.IO routes first
 [[redirects]]
   from = "/socket.io/*"
-  to = "/.netlify/functions/socketio-handler"
+  to = "/.netlify/edge-functions/socketio"
   status = 200
   force = true
 
@@ -23,6 +26,8 @@
   from = "/_next/static/*"
   to = "/_next/static/:splat"
   status = 200
+  force = true
+  conditions = {Path = "/_next/static/**"}
 
 # Handle API routes
 [[redirects]]
@@ -41,6 +46,5 @@
   [headers.values]
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Methods = "GET, POST, OPTIONS"
-    Access-Control-Allow-Headers = "X-Requested-With, Content-Type, Authorization, Sec-WebSocket-Key, Sec-WebSocket-Version, Sec-WebSocket-Protocol"
-    Access-Control-Allow-Credentials = "true"
-    Sec-WebSocket-Protocol = "socket.io" 
+    Access-Control-Allow-Headers = "X-Requested-With, Content-Type, Authorization"
+    Access-Control-Allow-Credentials = "true" 

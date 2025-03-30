@@ -51,6 +51,12 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
   useEffect(() => {
     // Initialize socket connection
     const socketInstance = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001", {
+      path: "/.netlify/edge-functions/socketio",
+      transports: ["websocket"],
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
       query: {
         roomId,
         username,

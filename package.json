@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "server": "ts-node --project tsconfig.server.json server/index.ts",
+    "server": "ts-node server/index.ts",
     "vercel-build": "next build"
   },
   "dependencies": {
