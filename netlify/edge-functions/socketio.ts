@@ -4,6 +4,13 @@ import { Context } from '@netlify/edge-functions'
 const rooms = new Map()
 const messages = new Map()
 
+interface User {
+  id: string
+  username: string
+  isHost: boolean
+  socket: WebSocket
+}
+
 export default async (request: Request, context: Context) => {
   const upgradeHeader = request.headers.get('Upgrade')
   if (!upgradeHeader || upgradeHeader !== 'websocket') {
@@ -27,7 +34,12 @@ export default async (request: Request, context: Context) => {
     messages.set(roomId, [])
   }
 
-  const user = { id: crypto.randomUUID(), username, isHost }
+  const user: User = { 
+    id: crypto.randomUUID(), 
+    username, 
+    isHost,
+    socket 
+  }
   const roomUsers = rooms.get(roomId)
   
   socket.onopen = () => {
@@ -37,7 +49,7 @@ export default async (request: Request, context: Context) => {
     // Send current users and messages to the new user
     socket.send(JSON.stringify({
       type: 'users',
-      data: Array.from(roomUsers)
+      data: Array.from(roomUsers).map(({ id, username, isHost }) => ({ id, username, isHost }))
     }))
 
     socket.send(JSON.stringify({
@@ -48,7 +60,7 @@ export default async (request: Request, context: Context) => {
     // Notify others about the new user
     broadcastToRoom(roomId, {
       type: 'user-joined',
-      data: user
+      data: { id: user.id, username: user.username, isHost: user.isHost }
     }, socket)
   }
 
@@ -84,7 +96,7 @@ export default async (request: Request, context: Context) => {
 
     broadcastToRoom(roomId, {
       type: 'user-left',
-      data: user
+      data: { id: user.id, username: user.username, isHost: user.isHost }
     })
 
     // Clean up empty rooms
@@ -104,7 +116,11 @@ function broadcastToRoom(roomId: string, message: any, excludeSocket?: WebSocket
   const messageStr = JSON.stringify(message)
   for (const user of roomUsers) {
     if (user.socket && user.socket !== excludeSocket) {
-      user.socket.send(messageStr)
+      try {
+        user.socket.send(messageStr)
+      } catch (error) {
+        console.error(`Failed to send message to user ${user.username}:`, error)
+      }
     }
   }
 } 

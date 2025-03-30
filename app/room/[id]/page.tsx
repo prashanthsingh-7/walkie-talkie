@@ -48,66 +48,104 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
   const { toast } = useToast()
 
   useEffect(() => {
-    const wsUrl = new URL("/.netlify/edge-functions/socketio", process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001")
-    wsUrl.protocol = wsUrl.protocol.replace('http', 'ws')
-    wsUrl.searchParams.set('roomId', roomId)
-    wsUrl.searchParams.set('username', username)
-    wsUrl.searchParams.set('isHost', isHost ? 'true' : 'false')
+    let ws: WebSocket | null = null
+    let reconnectTimeout: NodeJS.Timeout | null = null
+    let reconnectAttempts = 0
+    const maxReconnectAttempts = 5
 
-    const ws = new WebSocket(wsUrl.toString())
+    const connect = () => {
+      const wsUrl = new URL("/.netlify/edge-functions/socketio", process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001")
+      wsUrl.protocol = wsUrl.protocol.replace('http', 'ws')
+      wsUrl.searchParams.set('roomId', roomId)
+      wsUrl.searchParams.set('username', username)
+      wsUrl.searchParams.set('isHost', isHost ? 'true' : 'false')
 
-    ws.onopen = () => {
-      setConnected(true)
-      toast({
-        title: "Connected to room",
-        description: `You've joined room ${roomId}`,
-      })
-    }
+      ws = new WebSocket(wsUrl.toString())
 
-    ws.onclose = () => {
-      setConnected(false)
-      toast({
-        title: "Disconnected",
-        description: "You've been disconnected from the room",
-        variant: "destructive",
-      })
-    }
-
-    ws.onmessage = (event) => {
-      const message = JSON.parse(event.data)
-      switch (message.type) {
-        case 'message':
-          setMessages(prev => [...prev, message.data])
-          break
-        case 'users':
-          setUsers(message.data)
-          break
-        case 'user-joined':
-          toast({
-            title: "User joined",
-            description: `${message.data.username} has joined the room`,
-          })
-          break
-        case 'user-left':
-          toast({
-            title: "User left",
-            description: `${message.data.username} has left the room`,
-            variant: "destructive",
-          })
-          break
-        case 'typing':
-          if (message.data !== username) {
-            setIsTyping(true)
-            setTimeout(() => setIsTyping(false), 3000)
-          }
-          break
+      ws.onopen = () => {
+        setConnected(true)
+        reconnectAttempts = 0
+        toast({
+          title: "Connected to room",
+          description: `You've joined room ${roomId}`,
+        })
       }
+
+      ws.onclose = () => {
+        setConnected(false)
+        toast({
+          title: "Disconnected",
+          description: "You've been disconnected from the room",
+          variant: "destructive",
+        })
+
+        // Try to reconnect if we haven't exceeded max attempts
+        if (reconnectAttempts < maxReconnectAttempts) {
+          reconnectAttempts++
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 10000)
+          reconnectTimeout = setTimeout(connect, delay)
+        }
+      }
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error)
+        ws?.close()
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data)
+          switch (message.type) {
+            case 'message':
+              setMessages(prev => [...prev, message.data])
+              break
+            case 'messages':
+              setMessages(message.data)
+              break
+            case 'users':
+              setUsers(message.data)
+              break
+            case 'user-joined':
+              setUsers(prev => [...prev, message.data])
+              toast({
+                title: "User joined",
+                description: `${message.data.username} has joined the room`,
+              })
+              break
+            case 'user-left':
+              setUsers(prev => prev.filter(user => user.id !== message.data.id))
+              toast({
+                title: "User left",
+                description: `${message.data.username} has left the room`,
+                variant: "destructive",
+              })
+              break
+            case 'typing':
+              if (message.data !== username) {
+                setIsTyping(true)
+                if (typingTimeout) clearTimeout(typingTimeout)
+                const timeout = setTimeout(() => setIsTyping(false), 3000)
+                setTypingTimeout(timeout)
+              }
+              break
+          }
+        } catch (error) {
+          console.error('Error processing message:', error)
+        }
+      }
+
+      setSocket(ws)
     }
 
-    setSocket(ws)
+    connect()
 
     return () => {
-      ws.close()
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout)
+      }
+      if (ws) {
+        ws.close()
+      }
     }
   }, [roomId, username, isHost, toast])
 
