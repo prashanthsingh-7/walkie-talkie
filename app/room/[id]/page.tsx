@@ -4,7 +4,6 @@ import React from "react"
 
 import { useEffect, useState, useRef } from "react"
 import { useSearchParams } from "next/navigation"
-import { io, type Socket } from "socket.io-client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ArrowLeft, Send, ImageIcon, Users, X, Radio } from "lucide-react"
@@ -35,7 +34,7 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
   const isHost = searchParams.get("host") === "true"
   const roomId = resolvedParams.id
 
-  const [socket, setSocket] = useState<Socket | null>(null)
+  const [socket, setSocket] = useState<WebSocket | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [message, setMessage] = useState("")
@@ -49,72 +48,66 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
   const { toast } = useToast()
 
   useEffect(() => {
-    // Initialize socket connection
-    const socketInstance = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001", {
-      path: "/.netlify/edge-functions/socketio",
-      transports: ["websocket"],
-      autoConnect: true,
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      query: {
-        roomId,
-        username,
-        isHost: isHost ? "true" : "false",
-      },
-    })
+    const wsUrl = new URL("/.netlify/edge-functions/socketio", process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001")
+    wsUrl.protocol = wsUrl.protocol.replace('http', 'ws')
+    wsUrl.searchParams.set('roomId', roomId)
+    wsUrl.searchParams.set('username', username)
+    wsUrl.searchParams.set('isHost', isHost ? 'true' : 'false')
 
-    socketInstance.on("connect", () => {
+    const ws = new WebSocket(wsUrl.toString())
+
+    ws.onopen = () => {
       setConnected(true)
       toast({
         title: "Connected to room",
         description: `You've joined room ${roomId}`,
       })
-    })
+    }
 
-    socketInstance.on("disconnect", () => {
+    ws.onclose = () => {
       setConnected(false)
       toast({
         title: "Disconnected",
         description: "You've been disconnected from the room",
         variant: "destructive",
       })
-    })
+    }
 
-    socketInstance.on("message", (newMessage: Message) => {
-      setMessages((prev) => [...prev, newMessage])
-    })
-
-    socketInstance.on("users", (roomUsers: User[]) => {
-      setUsers(roomUsers)
-    })
-
-    socketInstance.on("user-joined", (user: User) => {
-      toast({
-        title: "User joined",
-        description: `${user.username} has joined the room`,
-      })
-    })
-
-    socketInstance.on("user-left", (user: User) => {
-      toast({
-        title: "User left",
-        description: `${user.username} has left the room`,
-        variant: "destructive",
-      })
-    })
-
-    socketInstance.on("typing", (user: string) => {
-      if (user !== username) {
-        setIsTyping(true)
-        setTimeout(() => setIsTyping(false), 3000)
+    ws.onmessage = (event) => {
+      const message = JSON.parse(event.data)
+      switch (message.type) {
+        case 'message':
+          setMessages(prev => [...prev, message.data])
+          break
+        case 'users':
+          setUsers(message.data)
+          break
+        case 'user-joined':
+          toast({
+            title: "User joined",
+            description: `${message.data.username} has joined the room`,
+          })
+          break
+        case 'user-left':
+          toast({
+            title: "User left",
+            description: `${message.data.username} has left the room`,
+            variant: "destructive",
+          })
+          break
+        case 'typing':
+          if (message.data !== username) {
+            setIsTyping(true)
+            setTimeout(() => setIsTyping(false), 3000)
+          }
+          break
       }
-    })
+    }
 
-    setSocket(socketInstance)
+    setSocket(ws)
 
     return () => {
-      socketInstance.disconnect()
+      ws.close()
     }
   }, [roomId, username, isHost, toast])
 
@@ -126,14 +119,15 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
   const sendMessage = () => {
     if (!message.trim() || !socket || !connected) return
 
-    const newMessage: Omit<Message, "id"> = {
-      sender: username,
-      content: message,
-      type: "text",
-      timestamp: Date.now(),
-    }
-
-    socket.emit("send-message", newMessage)
+    socket.send(JSON.stringify({
+      type: 'send-message',
+      data: {
+        sender: username,
+        content: message,
+        type: "text",
+        timestamp: Date.now(),
+      }
+    }))
     setMessage("")
   }
 
@@ -146,7 +140,10 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
 
   const handleTyping = () => {
     if (socket && connected) {
-      socket.emit("typing", username)
+      socket.send(JSON.stringify({
+        type: 'typing',
+        data: username
+      }))
     }
   }
 
@@ -155,7 +152,6 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
 
     const file = e.target.files[0]
     if (file.size > 5 * 1024 * 1024) {
-      // 5MB limit
       toast({
         title: "File too large",
         description: "Image must be less than 5MB",
@@ -167,19 +163,19 @@ export default function Room({ params }: { params: Promise<{ id: string }> }) {
     const reader = new FileReader()
     reader.onload = (event) => {
       if (event.target && typeof event.target.result === "string") {
-        const newMessage: Omit<Message, "id"> = {
-          sender: username,
-          content: event.target.result,
-          type: "image",
-          timestamp: Date.now(),
-        }
-
-        socket.emit("send-message", newMessage)
+        socket.send(JSON.stringify({
+          type: 'send-message',
+          data: {
+            sender: username,
+            content: event.target.result,
+            type: "image",
+            timestamp: Date.now(),
+          }
+        }))
       }
     }
     reader.readAsDataURL(file)
 
-    // Reset file input
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
