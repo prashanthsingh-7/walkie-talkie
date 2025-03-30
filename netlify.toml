@@ -1,5 +1,5 @@
 [build]
-  command = "npm run netlify-build"
+  command = "npm run build"
   publish = ".next"
 
 [[edge_functions]]
@@ -7,7 +7,9 @@
   function = "socketio"
 
 [functions]
+  included_files = [".next/server/**", ".next/standalone/**"]
   node_bundler = "esbuild"
+  external_node_modules = ["@netlify/plugin-nextjs"]
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
@@ -31,16 +33,22 @@
   to = "/_next/data/:splat"
   status = 200
 
+# Handle dynamic routes
+[[redirects]]
+  from = "/room/*"
+  to = "/.netlify/functions/server"
+  status = 200
+
 # Handle API routes
 [[redirects]]
   from = "/api/*"
-  to = "/.netlify/functions/api/:splat"
+  to = "/.netlify/functions/server"
   status = 200
 
-# Handle all other routes through Next.js
+# Handle all other routes
 [[redirects]]
   from = "/*"
-  to = "/.netlify/functions/next_server"
+  to = "/.netlify/functions/server"
   status = 200
 
 [[headers]]
