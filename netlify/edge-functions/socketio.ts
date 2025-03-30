@@ -26,7 +26,8 @@ export default async (request: Request, context: Context) => {
   }
 
   // Check if it's a WebSocket request
-  if (request.headers.get("upgrade") !== "websocket") {
+  const upgrade = request.headers.get('upgrade')?.toLowerCase()
+  if (upgrade !== 'websocket') {
     return new Response(`Expected Upgrade: websocket`, { 
       status: 426,
       headers: {
@@ -48,10 +49,7 @@ export default async (request: Request, context: Context) => {
 
   try {
     // Create WebSocket connection
-    const { socket, response } = Deno.upgradeWebSocket(request, {
-      idleTimeout: 60, // 60 seconds
-      protocol: "websocket"
-    })
+    const { socket, response } = Deno.upgradeWebSocket(request)
 
     // Initialize room if it doesn't exist
     if (!rooms.has(roomId)) {
@@ -68,6 +66,7 @@ export default async (request: Request, context: Context) => {
     }
 
     socket.onopen = () => {
+      console.log(`User ${username} connected to room ${roomId}`)
       // Add user to room
       roomUsers.add(user)
 
@@ -92,6 +91,8 @@ export default async (request: Request, context: Context) => {
     socket.onmessage = async (event) => {
       try {
         const message = JSON.parse(event.data)
+        console.log(`Received message from ${username}:`, message)
+        
         switch (message.type) {
           case 'ping':
             socket.send(JSON.stringify({ type: 'pong' }))
@@ -118,11 +119,12 @@ export default async (request: Request, context: Context) => {
             break
         }
       } catch (error) {
-        console.error('Error processing message:', error)
+        console.error(`Error processing message from ${username}:`, error)
       }
     }
 
     socket.onclose = () => {
+      console.log(`User ${username} disconnected from room ${roomId}`)
       roomUsers.delete(user)
       broadcastToRoom(roomId, {
         type: 'user-left',
@@ -136,17 +138,17 @@ export default async (request: Request, context: Context) => {
     }
 
     socket.onerror = (error) => {
-      console.error('WebSocket error:', error)
+      console.error(`WebSocket error for user ${username}:`, error)
     }
 
-    // Add WebSocket-specific headers
+    // Add WebSocket-specific headers to the response
     const wsHeaders = new Headers(response.headers)
     wsHeaders.set('Upgrade', 'websocket')
     wsHeaders.set('Connection', 'Upgrade')
-    wsHeaders.set('Sec-WebSocket-Protocol', 'websocket')
+    wsHeaders.set('Sec-WebSocket-Accept', response.headers.get('Sec-WebSocket-Accept') || '')
 
     return new Response(null, {
-      ...response,
+      status: 101,
       headers: wsHeaders
     })
   } catch (err) {

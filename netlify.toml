@@ -3,17 +3,11 @@
   publish = ".next"
 
 [[edge_functions]]
-  path = "/socketio"
+  pattern = "/.netlify/edge-functions/socketio"
   function = "socketio"
 
 [functions]
   node_bundler = "esbuild"
-
-[[redirects]]
-  from = "/.netlify/edge-functions/socketio"
-  to = "/socketio"
-  status = 200
-  force = true
 
 [[redirects]]
   from = "/*"
@@ -64,5 +58,14 @@
   [headers.values]
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Methods = "GET, POST, OPTIONS"
-    Access-Control-Allow-Headers = "X-Requested-With, Content-Type, Authorization"
-    Access-Control-Allow-Credentials = "true" 
+    Access-Control-Allow-Headers = "X-Requested-With, Content-Type, Authorization, Upgrade, Connection"
+    Access-Control-Allow-Credentials = "true"
+    Access-Control-Allow-Private-Network = "true"
+
+[[headers]]
+  for = "/.netlify/edge-functions/socketio"
+  [headers.values]
+    Content-Type = "text/plain"
+    Upgrade = "websocket"
+    Connection = "Upgrade"
+    Sec-WebSocket-Version = "13" 
